@@ -1,6 +1,7 @@
 name: Node.js Selenium Testing
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
