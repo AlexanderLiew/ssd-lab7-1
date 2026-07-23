@@ -16,20 +16,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache Node.js modules
-        uses: actions/cache@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          path: node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-node-modules
+          node-version: 22
+          cache: npm
 
       - name: Install Node.js dependencies
-        run: npm install
+        run: npm ci
 
       - name: Prepare artifacts
         run: |
-          tar -czvf www-build.tar.gz ./package.json ./src/server.js tests
-          ls -l
+          tar -czf www-build.tar.gz package.json package-lock.json src tests
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -41,7 +39,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     container:
-      image: node:22
+      image: node:22-bookworm
       ports:
         - 3000:3000
       options: --network-alias=testserver
@@ -52,7 +50,7 @@ jobs:
 
     services:
       selenium:
-        image: selenium/standalone-chrome:148.0-chromedriver-148.0-grid-4.45.0-20260606
+        image: selenium/standalone-chrome
         ports:
           - 4444:4444
 
@@ -63,44 +61,33 @@ jobs:
           name: www-build
 
       - name: Extract artifacts
-        run: |
-          tar -xzvf www-build.tar.gz
-          ls -l
+        run: tar -xzf www-build.tar.gz
 
       - name: Install dependencies
-        run: npm install
-
-      - name: List node_modules
-        run: ls -l node_modules
-
-      - name: List files for debugging
-        run: |
-          echo "Current directory:"
-          pwd
-          echo "Files in the current directory:"
-          ls -ltra .
-          echo "Files in the src directory:"
-          ls -ltra src/
-          echo "Files in the tests directory:"
-          ls -ltra tests/
+        run: npm ci
 
       - name: Run unit tests
         run: npm test
 
-      - name: Start Node.js server
+      - name: Run Selenium integration test
         run: |
-          nohup node src/server.js &  # Start the server in the background
-          sleep 5  # Give the server some time to start
+          node src/server.js > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
 
-      - name: Verify server is running
-        run: |
-          curl -f http://localhost:3000 || { echo "Server failed to start"; exit 1; }
-
-      - name: Wait for Selenium server to be up
-        run: |
-          for i in {1..10}; do
-            curl -s $SELENIUM_HOST && break || sleep 3
+          for i in $(seq 1 20); do
+            curl -fsS http://localhost:3000/timestamp && break
+            if [ "$i" -eq 20 ]; then
+              cat server.log
+              exit 1
+            fi
+            sleep 1
           done
 
-      - name: Run Selenium tests
-        run: node tests/SeleniumTest.mjs github
+          for i in $(seq 1 20); do
+            curl -fsS "$SELENIUM_HOST/status" && break
+            if [ "$i" -eq 20 ]; then exit 1; fi
+            sleep 2
+          done
+
+          node tests/SeleniumTest.mjs github

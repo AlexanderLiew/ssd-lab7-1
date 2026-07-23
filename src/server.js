@@ -1,4 +1,5 @@
 import express from 'express';
+import { pathToFileURL } from 'url';
 
 const app = express();
 
@@ -46,11 +47,16 @@ app.get('/', (req, res) => {
   `);
 });
 
-// Start the server
-const PORT = 3000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Start listening only when this file is run directly. Importing it for unit tests
+// should not claim a network port.
+const isMainModule = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
 
-// Export the server for tests
-export { server };
+if (isMainModule) {
+  const port = Number(process.env.PORT ?? 3000);
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`Server is running on port ${port}`);
+  });
+}
+
+export { app };

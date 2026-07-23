@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { getCurrentTimestamp, server } from '../src/server.js';
+import { getCurrentTimestamp } from '../src/server.js';
 
 describe('Timestamp Function', () => {
   it('should return a valid ISO timestamp', () => {
@@ -12,10 +12,5 @@ describe('Timestamp Function', () => {
     const timestamp = getCurrentTimestamp();
     const now = new Date().toISOString();
     expect(new Date(timestamp).getTime()).to.be.closeTo(new Date(now).getTime(), 1000);
-  });
-
-  // Close the server after all tests
-  after(() => {
-    server.close();
   });
 });
